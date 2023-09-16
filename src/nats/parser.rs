@@ -6,7 +6,6 @@ use super::{
 
 pub fn parse_nats(input: &str) -> Result<Command, ErrMessages> {
     let (head, tail) = split_data_by_space(input)?;
-    println!("{:?}", head);
     match head.trim_end_matches(END_OF_LINE) {
         "SUB" => handle_sub(&tail),
         "PUB" => handle_pub(&tail),
