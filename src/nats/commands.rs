@@ -8,21 +8,21 @@ const PARSE_USIZE_ERROR: &str = "Something went wrong when parsing byte to usize
 
 #[derive(PartialEq, Debug)]
 pub enum Command {
-    SUB {
+    Sub {
         subject: String,
         sid: u16,
     },
-    PUB {
+    Pub {
         subject: String,
         bytes: u8,
         payload: String,
     },
-    CONNECT(String),
-    PING(String),
+    Connect(String),
+    Ping(String),
 }
 
-pub fn handle_pub(tail: &String) -> Result<Command, ErrMessages> {
-    let (subject, rest) = split_data_by_space(&tail)?;
+pub fn handle_pub(tail: &str) -> Result<Command, ErrMessages> {
+    let (subject, rest) = split_data_by_space(tail)?;
     let (unparsed_bytes, payload) = split_data_by_crlf(rest.trim())?;
     let bytes = unparsed_bytes
         .trim_end_matches("\r\n")
@@ -36,7 +36,7 @@ pub fn handle_pub(tail: &String) -> Result<Command, ErrMessages> {
     }
     bytes
         .try_into()
-        .map(|bytes_u8| Command::PUB {
+        .map(|bytes_u8| Command::Pub {
             subject,
             bytes: bytes_u8,
             payload,
@@ -44,10 +44,10 @@ pub fn handle_pub(tail: &String) -> Result<Command, ErrMessages> {
         .map_err(|_| ErrMessages::UnknownProtocalOperation)
 }
 
-pub fn handle_sub(tail: &String) -> Result<Command, ErrMessages> {
+pub fn handle_sub(tail: &str) -> Result<Command, ErrMessages> {
     let (subject, unparsed_sid) = split_data_by_space(tail)?;
     match unparsed_sid.trim_end_matches("\r\n").parse::<u16>() {
-        Ok(sid) => Ok(Command::SUB { subject, sid }),
+        Ok(sid) => Ok(Command::Sub { subject, sid }),
         Err(err) => {
             println!("{} {:?}", PARSE_U16_ERROR, err);
             Err(ErrMessages::UnknownProtocalOperation)
@@ -56,9 +56,9 @@ pub fn handle_sub(tail: &String) -> Result<Command, ErrMessages> {
 }
 
 pub fn handle_ping() -> Command {
-    Command::PING("PONG\r\n".to_string())
+    Command::Ping("PONG\r\n".to_string())
 }
 
 pub fn handle_connect() -> Command {
-    Command::CONNECT("+OK\r\n".to_string())
+    Command::Connect("+OK\r\n".to_string())
 }

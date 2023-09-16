@@ -22,7 +22,7 @@ mod tests {
     #[test]
     fn should_parse_sub_gracefully() {
         assert_eq!(
-            Command::SUB {
+            Command::Sub {
                 subject: "FOO".to_string(),
                 sid: 1
             },
@@ -41,7 +41,7 @@ mod tests {
     #[test]
     fn should_parse_pub_gracefully() {
         assert_eq!(
-            Command::PUB {
+            Command::Pub {
                 subject: "CodingChallenge".to_string(),
                 payload: "Hello John!".to_string(),
                 bytes: 11,
@@ -69,7 +69,7 @@ mod tests {
     #[test]
     fn should_parse_ping() {
         assert_eq!(
-            Command::PING("PONG\r\n".to_string()),
+            Command::Ping("PONG\r\n".to_string()),
             parse_nats("PING\r\n").unwrap()
         )
     }
@@ -77,7 +77,7 @@ mod tests {
     #[test]
     fn should_parse_connect() {
         assert_eq!(
-            Command::CONNECT("+OK\r\n".to_string()),
+            Command::Connect("+OK\r\n".to_string()),
             parse_nats("CONNECT {}\r\n").unwrap()
         )
     }

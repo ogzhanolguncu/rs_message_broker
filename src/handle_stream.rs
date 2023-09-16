@@ -35,8 +35,7 @@ fn event_loop(stream: &mut TcpStream) {
 
 fn handle_event(stream: &mut TcpStream, buffer: &mut [u8]) -> Result<(), MyError> {
     let human_readable = read_buffer(stream, buffer)?.ok_or(MyError::PeerClosed)?;
-    let command =
-        parse_nats(&human_readable.to_uppercase()).map_err(|err| MyError::CustomError(err))?;
+    let command = parse_nats(&human_readable.to_uppercase()).map_err(MyError::CustomError)?;
     handle_command(stream, command)
 }
 
@@ -83,9 +82,9 @@ fn write_back_to_client(stream: &mut TcpStream, message: String) -> Result<(), M
 
 fn handle_command(stream: &mut TcpStream, command: Command) -> Result<(), MyError> {
     match command {
-        Command::SUB { .. } => Ok(()),
-        Command::PUB { .. } => Ok(()),
-        Command::CONNECT(message) | Command::PING(message) => write_back_to_client(stream, message),
+        Command::Sub { .. } => Ok(()),
+        Command::Pub { .. } => Ok(()),
+        Command::Connect(message) | Command::Ping(message) => write_back_to_client(stream, message),
     }
 }
 
