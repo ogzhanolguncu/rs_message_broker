@@ -1,4 +1,4 @@
-mod commands;
-mod errors;
+pub mod commands;
+pub mod errors;
 mod parse_utils;
 pub mod parser;
