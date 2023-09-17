@@ -1,17 +1,23 @@
-use log::{error, info, warn};
+use log::{info, warn};
 use std::{
     io::{Read, Write},
     net::TcpStream,
+    sync::Arc,
 };
 
 use crate::{
-    nats::{commands::Command, errors::MyError, parser::parse_nats},
+    nats::{
+        commands::Command,
+        errors::{ErrMessages, MyError},
+        parser::parse_nats,
+    },
+    store::message_broker::{MessageBrokerStore, Subject, SubscriptionId},
     ADDR, PORT,
 };
 
-pub fn handle_stream(mut stream: TcpStream) {
+pub fn handle_stream(mut stream: TcpStream, store: &Arc<MessageBrokerStore>) {
     initialize_stream(&mut stream);
-    event_loop(&mut stream);
+    event_loop(&mut stream, store);
 }
 
 fn initialize_stream(stream: &mut TcpStream) {
@@ -20,10 +26,10 @@ fn initialize_stream(stream: &mut TcpStream) {
     }
 }
 
-fn event_loop(stream: &mut TcpStream) {
+fn event_loop(stream: &mut TcpStream, store: &Arc<MessageBrokerStore>) {
     let mut buffer = [0_u8; 128];
     loop {
-        match handle_event(stream, &mut buffer) {
+        match handle_event(stream, &mut buffer, store) {
             Ok(_) => continue,
             Err(err) => {
                 handle_error(err, stream);
@@ -33,10 +39,14 @@ fn event_loop(stream: &mut TcpStream) {
     }
 }
 
-fn handle_event(stream: &mut TcpStream, buffer: &mut [u8]) -> Result<(), MyError> {
+fn handle_event(
+    stream: &mut TcpStream,
+    buffer: &mut [u8],
+    store: &Arc<MessageBrokerStore>,
+) -> Result<(), MyError> {
     let human_readable = read_buffer(stream, buffer)?.ok_or(MyError::PeerClosed)?;
     let command = parse_nats(&human_readable.to_uppercase()).map_err(MyError::CustomError)?;
-    handle_command(stream, command)
+    handle_command(stream, command, store)
 }
 
 fn handle_error(err: MyError, stream: &mut TcpStream) {
@@ -80,10 +90,41 @@ fn write_back_to_client(stream: &mut TcpStream, message: String) -> Result<(), M
     })
 }
 
-fn handle_command(stream: &mut TcpStream, command: Command) -> Result<(), MyError> {
+fn handle_command(
+    stream: &mut TcpStream,
+    command: Command,
+    store: &Arc<MessageBrokerStore>,
+) -> Result<(), MyError> {
     match command {
-        Command::Sub { .. } => Ok(()),
-        Command::Pub { .. } => Ok(()),
+        Command::Sub { sid, subject } => {
+            info!(
+                "Adding subject_name: {} subject_id: {} to store",
+                subject, sid
+            );
+            match store.add_subscription(Subject(subject), SubscriptionId(sid)) {
+                Ok(res) => {
+                    if res {
+                        info!("Added subject",);
+                        Ok(())
+                    } else {
+                        info!("Subject id was already there skipping it");
+                        Ok(())
+                    }
+                }
+                Err(err) => {
+                    error!("{}", err);
+                    Err(MyError::CustomError(ErrMessages::InternalError))
+                }
+            }
+        }
+        Command::Pub {
+            payload,
+            subject,
+            bytes,
+        } => {
+            info!("{} {} {}", payload, subject, bytes);
+            Ok(())
+        }
         Command::Connect(message) | Command::Ping(message) => write_back_to_client(stream, message),
     }
 }

@@ -34,14 +34,16 @@ pub enum ErrMessages {
     NoHeadElement,
     UnknownProtocalOperation,
     UnknownCommand,
+    InternalError,
 }
 
 impl fmt::Display for ErrMessages {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            ErrMessages::NoHeadElement => write!(f, "No head element found"),
+            ErrMessages::NoHeadElement => write!(f, "-ERR No Head Element Found"),
             ErrMessages::UnknownProtocalOperation => write!(f, "-ERR 'Unknown Protocol Operation'"),
             ErrMessages::UnknownCommand => write!(f, "-ERR 'Unknown Protocol Operation'"),
+            ErrMessages::InternalError => write!(f, "-ERR 'Internal Error'"),
         }
     }
 }
