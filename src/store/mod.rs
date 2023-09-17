@@ -27,7 +27,7 @@ impl MessageBrokerStore {
         self.data
             .write()
             .map_err(|_| "Could not acquire data write lock")
-            .and_then(|mut data| Ok(data.entry(subject).or_insert_with(HashSet::new).insert(sub)))
+            .map(|mut data| data.entry(subject).or_insert_with(HashSet::new).insert(sub))
     }
 
     pub fn remove_subscription(
