@@ -3,6 +3,7 @@ extern crate log;
 
 mod handle_stream;
 mod nats;
+mod store;
 
 use handle_stream::handle_stream;
 use std::net::{Ipv4Addr, SocketAddrV4, TcpListener};
