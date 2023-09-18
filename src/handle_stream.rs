@@ -41,72 +41,81 @@ fn event_loop(stream: &mut TcpStream, store: &Arc<MessageBrokerStore>) {
     let mut state = ReadState::Command;
 
     loop {
-        match stream.read(&mut data) {
+        match read_from_stream(stream, &mut data) {
             Ok(size) => {
-                if size == 0 {
-                    info!("Connection closed by client!");
-                    break;
-                } else {
-                    buffer.extend_from_slice(&data[0..size]);
-
-                    match state {
-                        ReadState::Command => {
-                            if let Some(end_of_command) = buffer.iter().position(|&b| b == b'\n') {
-                                let cloned_buffer = buffer.clone();
-                                let human_readable = String::from_utf8_lossy(&cloned_buffer);
-
-                                let command_bytes =
-                                    buffer.drain(..=end_of_command).collect::<Vec<u8>>();
-                                let command_str = String::from_utf8_lossy(&command_bytes);
-
-                                if command_str.starts_with("PUB") {
-                                    let parts: Vec<&str> = command_str.split_whitespace().collect();
-                                    if parts.len() >= 3 {
-                                        let subject = parts[1].to_string();
-                                        let expected_len: usize = parts[2].parse().unwrap_or(0);
-                                        state = ReadState::Payload {
-                                            subject,
-                                            expected_len,
-                                        };
-                                    }
-                                } else {
-                                    match handle_event(stream, store, &human_readable) {
-                                        Ok(_) => continue,
-                                        Err(err) => handle_error(err, stream),
-                                    };
-                                }
-                            }
-                        }
-                        ReadState::Payload {
-                            expected_len,
-                            ref subject,
-                        } => {
-                            if buffer.len() >= expected_len {
-                                let payload = buffer.drain(..expected_len).collect::<Vec<u8>>();
-                                let payload_str = String::from_utf8_lossy(&payload);
-
-                                let pub_payload = format!(
-                                    "PUB {} {}\r\n{}\r\n",
-                                    subject, expected_len, payload_str
-                                );
-                                state = ReadState::Command;
-                                match handle_event(stream, store, &pub_payload) {
-                                    Ok(_) => continue,
-                                    Err(err) => handle_error(err, stream),
-                                };
-                            }
-                        }
-                    }
-                }
+                buffer.extend_from_slice(&data[0..size]);
+                state = match state {
+                    ReadState::Command => handle_command_state(stream, store, &mut buffer),
+                    ReadState::Payload {
+                        subject,
+                        expected_len,
+                    } => handle_payload_state(stream, store, &mut buffer, subject, expected_len),
+                };
             }
-            Err(_) => {
-                println!("An error occurred while reading from the stream");
+            Err(e) => {
+                println!("An error occurred while reading from the stream: {}", e);
                 break;
             }
         }
     }
 }
 
+fn read_from_stream(stream: &mut TcpStream, data: &mut [u8]) -> Result<usize, MyError> {
+    match stream.read(data) {
+        Ok(0) => {
+            info!("Connection closed by client!");
+            Err(MyError::PeerClosed)
+        }
+        Ok(size) => Ok(size),
+        Err(_) => Err(MyError::CustomError(ErrMessages::InternalError)),
+    }
+}
+
+fn handle_command_state(
+    stream: &mut TcpStream,
+    store: &Arc<MessageBrokerStore>,
+    buffer: &mut Vec<u8>,
+) -> ReadState {
+    if let Some(end_of_command) = buffer.iter().position(|&b| b == b'\n') {
+        let command_bytes = buffer.drain(..=end_of_command).collect::<Vec<u8>>();
+        let command_str = String::from_utf8_lossy(&command_bytes);
+
+        if command_str.starts_with("PUB") {
+            let parts: Vec<&str> = command_str.split_whitespace().collect();
+            if parts.len() >= 3 {
+                let subject = parts[1].to_string();
+                let expected_len: usize = parts[2].parse().unwrap_or(0);
+                return ReadState::Payload {
+                    subject,
+                    expected_len,
+                };
+            }
+        }
+        if let Err(err) = handle_event(stream, store, &command_str) {
+            handle_error(err, stream);
+        }
+    }
+    ReadState::Command
+}
+
+fn handle_payload_state(
+    stream: &mut TcpStream,
+    store: &Arc<MessageBrokerStore>,
+    buffer: &mut Vec<u8>,
+    subject: String,
+    expected_len: usize,
+) -> ReadState {
+    if buffer.len() >= expected_len {
+        let payload = buffer.drain(..expected_len).collect::<Vec<u8>>();
+        let payload_str = String::from_utf8_lossy(&payload);
+
+        let pub_payload = format!("PUB {} {}\r\n{}\r\n", subject, expected_len, payload_str);
+        if let Err(err) = handle_event(stream, store, &pub_payload) {
+            handle_error(err, stream);
+        }
+    }
+    ReadState::Command
+}
 fn handle_event(
     stream: &mut TcpStream,
     store: &Arc<MessageBrokerStore>,
@@ -155,32 +164,14 @@ fn handle_command(
 ) -> Result<(), MyError> {
     match command {
         Command::Sub { sid, subject } => {
-            info!(
-                "Adding subject_name: {} subject_id: {} to store",
-                subject, sid
-            );
-            match store.add_subscription(Subject(subject), SubscriptionId(sid)) {
-                Ok(res) => {
-                    if res {
-                        info!("Added subject",);
-                        Ok(())
-                    } else {
-                        info!("Subject id was already there skipping it");
-                        Ok(())
-                    }
-                }
-                Err(err) => {
-                    error!("{}", err);
-                    Err(MyError::CustomError(ErrMessages::InternalError))
-                }
+            let stream_clone = stream.try_clone().unwrap();
+            match store.add_subscription(Subject(subject), SubscriptionId(sid), stream_clone) {
+                Ok(_) => write_back_to_client(stream, "+OK\r\n".to_string()),
+                Err(_) => Err(MyError::CustomError(ErrMessages::InternalError)),
             }
         }
-        Command::Pub {
-            payload,
-            subject,
-            bytes,
-        } => {
-            info!("HIT HERE {} {} {}", payload, subject, bytes);
+        Command::Pub { payload, subject } => {
+            store.publish_to_sub(Subject(subject), payload);
             Ok(())
         }
         Command::Connect(message) | Command::Ping(message) => write_back_to_client(stream, message),

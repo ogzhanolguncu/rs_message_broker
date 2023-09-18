@@ -1,4 +1,6 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
+use std::io::Write;
+use std::net::TcpStream;
 use std::sync::{Arc, RwLock};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -7,9 +9,9 @@ pub struct Subject(pub String);
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct SubscriptionId(pub u16);
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct MessageBrokerStore {
-    data: Arc<RwLock<HashMap<Subject, HashSet<SubscriptionId>>>>,
+    data: Arc<RwLock<HashMap<Subject, HashMap<SubscriptionId, TcpStream>>>>,
 }
 
 impl MessageBrokerStore {
@@ -23,95 +25,30 @@ impl MessageBrokerStore {
         &self,
         subject: Subject,
         sub: SubscriptionId,
+        stream: TcpStream,
     ) -> Result<bool, &'static str> {
-        self.data
-            .write()
-            .map_err(|_| "Could not acquire data write lock")
-            .map(|mut data| data.entry(subject).or_insert_with(HashSet::new).insert(sub))
+        let mut data = self.data.write().unwrap();
+        let subscribers = data.entry(subject).or_insert_with(HashMap::new);
+        Ok(subscribers
+            .insert(sub, stream.try_clone().unwrap())
+            .is_none())
     }
 
-    pub fn remove_subscription(
-        &self,
-        subject: &Subject,
-        sub: &SubscriptionId,
-    ) -> Result<bool, &'static str> {
-        self.data
-            .write()
-            .map_err(|_| "Could not acquire data write lock")
-            .and_then(|mut data| {
-                data.get_mut(subject)
-                    .ok_or("Could not get subject")
-                    .map(|subs| subs.remove(sub))
-            })
-    }
-
-    pub fn list_subscriptions(
-        &self,
-        subject: &Subject,
-    ) -> Result<Vec<SubscriptionId>, &'static str> {
-        match self.data.read() {
-            Ok(data) => Ok(data
-                .get(subject)
-                .cloned()
-                .map(|hs| hs.into_iter().collect())
-                .unwrap_or_else(Vec::new)),
-            Err(_) => Err("Could not acquire data read lock"),
+    pub fn publish_to_sub(&self, subject: Subject, message: String) {
+        if let Ok(data) = self.data.read() {
+            if let Some(subscribers) = data.get(&subject) {
+                for (sid, stream) in subscribers {
+                    let formatted_message = format!(
+                        "-MSG {} {} {}\r\n{}\r\n",
+                        subject.0,
+                        sid.0,
+                        message.len(),
+                        message
+                    );
+                    let mut stream = stream.try_clone().unwrap();
+                    let _ = stream.write_all(formatted_message.as_bytes());
+                }
+            }
         }
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn should_add_subscriber_to_cache() {
-        let cache = MessageBrokerStore::new();
-        cache
-            .add_subscription(Subject("FOO".to_string()), SubscriptionId(10))
-            .unwrap();
-        cache
-            .add_subscription(Subject("FOO".to_string()), SubscriptionId(10))
-            .unwrap();
-        cache
-            .add_subscription(Subject("FOO".to_string()), SubscriptionId(10))
-            .unwrap();
-
-        assert_eq!(
-            1,
-            cache
-                .list_subscriptions(&Subject("FOO".to_string()))
-                .unwrap()
-                .len()
-        )
-    }
-
-    #[test]
-    fn should_remove_subscriber_from_cache() {
-        let cache = MessageBrokerStore::new();
-        cache
-            .add_subscription(Subject("FOO".to_string()), SubscriptionId(10))
-            .unwrap();
-        cache
-            .add_subscription(Subject("FOO".to_string()), SubscriptionId(11))
-            .unwrap();
-        cache
-            .remove_subscription(&Subject("FOO".to_string()), &SubscriptionId(10))
-            .unwrap();
-
-        assert_eq!(
-            1,
-            cache
-                .list_subscriptions(&Subject("FOO".to_string()))
-                .unwrap()
-                .len()
-        )
-    }
-}
-
-// let mut map: HashMap<&str, String> = HashMap::new();
-// let s = "hoho".to_string();
-
-// map.entry("poneyland").or_insert_with(|| s);
-
-// assert_eq!(map["poneyland"], "hoho".to_string());

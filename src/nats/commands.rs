@@ -8,15 +8,8 @@ const PARSE_USIZE_ERROR: &str = "Something went wrong when parsing byte to usize
 
 #[derive(PartialEq, Debug)]
 pub enum Command {
-    Sub {
-        subject: String,
-        sid: u16,
-    },
-    Pub {
-        subject: String,
-        bytes: u8,
-        payload: String,
-    },
+    Sub { subject: String, sid: u16 },
+    Pub { subject: String, payload: String },
     Connect(String),
     Ping(String),
 }
@@ -34,14 +27,7 @@ pub fn handle_pub(tail: &str) -> Result<Command, ErrMessages> {
     if payload.len() != bytes {
         return Err(ErrMessages::UnknownProtocalOperation);
     }
-    bytes
-        .try_into()
-        .map(|bytes_u8| Command::Pub {
-            subject,
-            bytes: bytes_u8,
-            payload,
-        })
-        .map_err(|_| ErrMessages::UnknownProtocalOperation)
+    Ok(Command::Pub { subject, payload })
 }
 
 pub fn handle_sub(tail: &str) -> Result<Command, ErrMessages> {

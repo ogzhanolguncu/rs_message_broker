@@ -44,7 +44,6 @@ mod tests {
             Command::Pub {
                 subject: "CodingChallenge".to_string(),
                 payload: "Hello John!".to_string(),
-                bytes: 11,
             },
             parse_nats("PUB CodingChallenge 11\r\nHello John!\r\n").unwrap()
         )
