@@ -17,8 +17,7 @@ const ADDR: Ipv4Addr = Ipv4Addr::new(127, 0, 0, 1);
 const PORT: u16 = 4222; //NATS PORT
 
 fn main() {
-    std::env::set_var("RUST_LOG", "info"); // Optional, if you haven't set it in the shell
-    env_logger::init();
+    std::env::set_var("RUST_LOG", "info");
     info!("Starting up server!");
 
     let store = Arc::new(MessageBrokerStore::new());
@@ -36,5 +35,4 @@ fn main() {
             Err(err) => println!("Connection failed due to {:?}", err),
         }
     }
-    todo!()
 }
