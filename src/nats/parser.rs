@@ -1,5 +1,5 @@
 use super::{
-    commands::{handle_connect, handle_ping, handle_pub, handle_sub, Command},
+    commands::{handle_connect, handle_ping, handle_pub, handle_sub, handle_unsub, Command},
     errors::ErrMessages,
     parse_utils::{split_data_by_space, END_OF_LINE},
 };
@@ -9,6 +9,7 @@ pub fn parse_nats(input: &str) -> Result<Command, ErrMessages> {
     match head.trim_end_matches(END_OF_LINE) {
         "SUB" => handle_sub(&tail),
         "PUB" => handle_pub(&tail),
+        "UNSUB" => handle_unsub(&tail),
         "PING" => Ok(handle_ping()),
         "CONNECT" => Ok(handle_connect()),
         _ => Err(ErrMessages::UnknownCommand),

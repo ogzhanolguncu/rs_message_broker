@@ -12,6 +12,7 @@ pub enum Command {
     Pub { subject: String, payload: String },
     Connect(String),
     Ping(String),
+    Unsub(u16),
 }
 
 pub fn handle_pub(tail: &str) -> Result<Command, ErrMessages> {
@@ -34,6 +35,16 @@ pub fn handle_sub(tail: &str) -> Result<Command, ErrMessages> {
     let (subject, unparsed_sid) = split_data_by_space(tail)?;
     match unparsed_sid.trim_end_matches("\r\n").parse::<u16>() {
         Ok(sid) => Ok(Command::Sub { subject, sid }),
+        Err(err) => {
+            println!("{} {:?}", PARSE_U16_ERROR, err);
+            Err(ErrMessages::UnknownProtocalOperation)
+        }
+    }
+}
+
+pub fn handle_unsub(tail: &str) -> Result<Command, ErrMessages> {
+    match tail.trim_end_matches("\r\n").parse::<u16>() {
+        Ok(sid) => Ok(Command::Unsub(sid)),
         Err(err) => {
             println!("{} {:?}", PARSE_U16_ERROR, err);
             Err(ErrMessages::UnknownProtocalOperation)

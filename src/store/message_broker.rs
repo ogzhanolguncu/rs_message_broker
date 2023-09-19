@@ -34,6 +34,23 @@ impl MessageBrokerStore {
             .is_none())
     }
 
+    pub fn remove_subscription(&self, sub: SubscriptionId) -> Result<bool, &'static str> {
+        let mut data = self.data.write().unwrap();
+        let mut removed = false;
+
+        for subscribers in data.values_mut() {
+            if subscribers.remove(&sub).is_some() {
+                removed = true;
+            }
+        }
+
+        if removed {
+            Ok(true)
+        } else {
+            Err("Subscription not found")
+        }
+    }
+
     pub fn publish_to_sub(&self, subject: Subject, message: String) {
         if let Ok(data) = self.data.read() {
             if let Some(subscribers) = data.get(&subject) {

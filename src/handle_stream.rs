@@ -170,7 +170,12 @@ fn handle_command(
                 Err(_) => Err(MyError::CustomError(ErrMessages::InternalError)),
             }
         }
+        Command::Unsub(sid) => match store.remove_subscription(SubscriptionId(sid)) {
+            Ok(_) => write_back_to_client(stream, "+OK\r\n".to_string()),
+            Err(_) => Err(MyError::CustomError(ErrMessages::InternalError)),
+        },
         Command::Pub { payload, subject } => {
+            write_back_to_client(stream, "+OK\r\n".to_string())?;
             store.publish_to_sub(Subject(subject), payload);
             Ok(())
         }
